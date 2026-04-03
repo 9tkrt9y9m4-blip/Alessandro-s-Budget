@@ -201,6 +201,7 @@ tr:hover .row-del{opacity:1}
     <div class="nav-lbl">Patrimony</div>
     <div class="nav-i" onclick="nav('assets')"><i class="bi bi-houses-fill"></i> Assets</div>
     <div class="nav-lbl">Settings</div>
+    <div class="nav-i" onclick="nav('categories')"><i class="bi bi-tags-fill"></i> Categorie</div>
     <div class="nav-i" onclick="nav('settings')"><i class="bi bi-gear-fill"></i> Settings</div>
   </div>
   <div class="sb-bot">
@@ -309,6 +310,19 @@ tr:hover .row-del{opacity:1}
       <div id="assets-content"></div>
     </div>
 
+    <!-- CATEGORIES -->
+    <div class="page" id="page-categories">
+      <div class="page-hdr">
+        <h2>Categorie</h2>
+        <button class="btn btn-p" onclick="openCatModal()"><i class="bi bi-plus-lg"></i> Nuova Categoria</button>
+      </div>
+      <div class="tabs">
+        <button class="tab active" onclick="catTab('income',this)">Entrate</button>
+        <button class="tab" onclick="catTab('expense',this)">Uscite</button>
+      </div>
+      <div id="cat-panel"></div>
+    </div>
+
     <!-- SETTINGS -->
     <div class="page" id="page-settings">
       <div class="page-hdr"><h2>Settings</h2></div>
@@ -319,7 +333,68 @@ tr:hover .row-del{opacity:1}
 </div>
 </div>
 
-<!-- TRANSACTION MODAL -->
+<!-- CATEGORY MODAL -->
+<div class="overlay" id="catModal">
+  <div class="modal">
+    <div class="modal-h">
+      <h3 id="catModalTitle">Nuova Categoria</h3>
+      <button onclick="closeCatModal()"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="modal-b">
+      <div class="fg">
+        <label class="fl">Tipo</label>
+        <div class="tabs" style="margin-bottom:0">
+          <button class="tab active" id="catTypeInc" onclick="setCatType('income',this)">Entrata</button>
+          <button class="tab" id="catTypeExp" onclick="setCatType('expense',this)">Uscita</button>
+        </div>
+      </div>
+      <div class="fg">
+        <label class="fl">Nome Categoria</label>
+        <input type="text" class="fi" id="catLabel" placeholder="es. Affitti Brevi">
+      </div>
+      <div class="fr">
+        <div class="fg">
+          <label class="fl">Icona / Emoji</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" class="fi" id="catIcon" placeholder="🏠 o bi-house" style="flex:1" oninput="previewCatIcon()">
+            <div id="catIconPreview" style="font-size:26px;width:42px;height:42px;display:flex;align-items:center;justify-content:center;background:var(--bg);border-radius:8px;border:1.5px solid var(--bdr);flex-shrink:0">🏠</div>
+          </div>
+          <button class="btn btn-s sm" style="margin-top:6px;width:100%" onclick="openIconPicker()"><i class="bi bi-grid"></i> Scegli dalla libreria</button>
+        </div>
+        <div class="fg">
+          <label class="fl">Colore</label>
+          <input type="color" class="fi" id="catColor" value="#C8963C" style="height:42px;padding:4px">
+        </div>
+      </div>
+      <input type="hidden" id="catEditId">
+    </div>
+    <div class="modal-f">
+      <button class="btn btn-d sm" id="catDelBtn" style="display:none;margin-right:auto" onclick="deleteCat()"><i class="bi bi-trash"></i> Elimina</button>
+      <button class="btn btn-s" onclick="closeCatModal()">Annulla</button>
+      <button class="btn btn-p" onclick="saveCat()"><i class="bi bi-check2"></i> Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- ICON PICKER MODAL -->
+<div class="overlay" id="iconPickerModal" style="z-index:600">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-h">
+      <h3>Libreria Icone & Emoji</h3>
+      <button onclick="closeIconPicker()"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="modal-b" style="padding:14px">
+      <input type="text" class="fi" id="iconSearch" placeholder="🔍 Cerca emoji o icona..." oninput="filterIcons()" style="margin-bottom:12px">
+      <div class="tabs" style="margin-bottom:10px" id="iconTabs">
+        <button class="tab active" onclick="iconSection('emoji',this)">Emoji</button>
+        <button class="tab" onclick="iconSection('bi',this)">Bootstrap Icons</button>
+      </div>
+      <div id="iconGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;max-height:320px;overflow-y:auto"></div>
+    </div>
+  </div>
+</div>
+
+
 <div class="overlay" id="txModal">
   <div class="modal">
     <div class="modal-h">
@@ -460,12 +535,56 @@ tr:hover .row-del{opacity:1}
 <script>
 // ===================== DATA LAYER =====================
 const STORE_KEY = 'finanza_v1';
+
+// Default category definitions
+const DEF_INCOME_CATS = [
+  {id:'client_long',   label:'Client — Long Term',   icon:'bi-briefcase-fill',   color:'#2ecc71', type:'income'},
+  {id:'client_short',  label:'Client — Short Term',  icon:'bi-briefcase',        color:'#27ae60', type:'income'},
+  {id:'rental',        label:'Rental Income',         icon:'🏠',                  color:'#1abc9c', type:'income'},
+  {id:'interest',      label:'Interest / Dividends',  icon:'bi-graph-up-arrow',   color:'#16a085', type:'income'},
+  {id:'other_inc',     label:'Other Income',          icon:'bi-plus-circle-fill', color:'#2c9d6e', type:'income'},
+];
+const DEF_EXPENSE_CATS = [
+  {id:'mortgage',      label:'Mortgage',              icon:'bi-bank2',            color:'#e74c3c', type:'expense'},
+  {id:'groceries',     label:'Groceries',             icon:'🛒',                  color:'#e67e22', type:'expense'},
+  {id:'utilities',     label:'Utilities',             icon:'⚡',                  color:'#f39c12', type:'expense'},
+  {id:'cleaning',      label:'Cleaning Lady',         icon:'✨',                  color:'#d35400', type:'expense'},
+  {id:'telecom',       label:'Phone / Internet',      icon:'📱',                  color:'#8e44ad', type:'expense'},
+  {id:'transport',     label:'Transport / Car',       icon:'🚗',                  color:'#9b59b6', type:'expense'},
+  {id:'health',        label:'Health / Pharmacy',     icon:'❤️',                  color:'#e91e63', type:'expense'},
+  {id:'restaurant',    label:'Restaurant / Dining',   icon:'🍽️',                  color:'#ff5722', type:'expense'},
+  {id:'clothing',      label:'Clothing',              icon:'👗',                  color:'#795548', type:'expense'},
+  {id:'insurance',     label:'Insurance',             icon:'🛡️',                  color:'#607d8b', type:'expense'},
+  {id:'maintenance',   label:'Home Maintenance',      icon:'🔧',                  color:'#546e7a', type:'expense'},
+  {id:'subscriptions', label:'Subscriptions',         icon:'▶️',                  color:'#00bcd4', type:'expense'},
+  {id:'travel',        label:'Travel / Holidays',     icon:'✈️',                  color:'#03a9f4', type:'expense'},
+  {id:'gifts',         label:'Gifts / Donations',     icon:'🎁',                  color:'#ff9800', type:'expense'},
+  {id:'professional',  label:'Professional Services', icon:'bi-person-badge-fill',color:'#3f51b5', type:'expense'},
+  {id:'family_contrib',label:'Family Account Transfer',icon:'👨‍👩‍👧', color:'#9c27b0', type:'expense'},
+  {id:'tax_payment',   label:'Tax Payment (F24)',     icon:'🧾',                  color:'#c0392b', type:'expense'},
+  {id:'inps_payment',  label:'INPS Payment',          icon:'🏛️',                  color:'#d32f2f', type:'expense'},
+  {id:'other_exp',     label:'Other Expenses',        icon:'⋯',                  color:'#78909c', type:'expense'},
+];
+
 let DB = loadDB();
 
 function loadDB() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const d = JSON.parse(raw);
+      // migrate: inject categories if missing
+      if (!d.categories || !d.categories.length) {
+        d.categories = [...DEF_INCOME_CATS, ...DEF_EXPENSE_CATS];
+      }
+      // ensure type field on all categories
+      d.categories.forEach(c => {
+        if (!c.type) {
+          c.type = DEF_INCOME_CATS.find(x=>x.id===c.id) ? 'income' : 'expense';
+        }
+      });
+      return d;
+    }
   } catch(e){}
   return defaultDB();
 }
@@ -473,9 +592,10 @@ function loadDB() {
 function defaultDB() {
   return {
     transactions: [],
-    budgets: {},       // key: "YYYY-MM", value: {cat: amount}
+    budgets: {},
     assets: [],
     goals: [],
+    categories: [...DEF_INCOME_CATS, ...DEF_EXPENSE_CATS],
     taxSettings: {
       regime: 'ordinario',   // 'ordinario' | 'forfettario'
       coefficiente: 78,      // forfettario imponibile %
@@ -498,38 +618,14 @@ function save() {
   localStorage.setItem(STORE_KEY, JSON.stringify(DB));
 }
 
-// ===================== CATEGORIES =====================
-const INCOME_CATS = [
-  {id:'client_long',   label:'Client — Long Term',   icon:'bi-briefcase-fill',   color:'#2ecc71'},
-  {id:'client_short',  label:'Client — Short Term',  icon:'bi-briefcase',        color:'#27ae60'},
-  {id:'rental',        label:'Rental Income',         icon:'bi-house-fill',       color:'#1abc9c'},
-  {id:'interest',      label:'Interest / Dividends',  icon:'bi-graph-up-arrow',   color:'#16a085'},
-  {id:'other_inc',     label:'Other Income',          icon:'bi-plus-circle-fill', color:'#2c9d6e'},
-];
-const EXPENSE_CATS = [
-  {id:'mortgage',      label:'Mortgage',              icon:'bi-bank2',            color:'#e74c3c'},
-  {id:'groceries',     label:'Groceries',             icon:'bi-cart-fill',        color:'#e67e22'},
-  {id:'utilities',     label:'Utilities',             icon:'bi-lightning-fill',   color:'#f39c12'},
-  {id:'cleaning',      label:'Cleaning Lady',         icon:'bi-stars',            color:'#d35400'},
-  {id:'telecom',       label:'Phone / Internet',      icon:'bi-phone-fill',       color:'#8e44ad'},
-  {id:'transport',     label:'Transport / Car',       icon:'bi-car-front-fill',   color:'#9b59b6'},
-  {id:'health',        label:'Health / Pharmacy',     icon:'bi-heart-fill',       color:'#e91e63'},
-  {id:'restaurant',    label:'Restaurant / Dining',   icon:'bi-cup-straw',        color:'#ff5722'},
-  {id:'clothing',      label:'Clothing',              icon:'bi-bag-fill',         color:'#795548'},
-  {id:'insurance',     label:'Insurance',             icon:'bi-shield-fill-check',color:'#607d8b'},
-  {id:'maintenance',   label:'Home Maintenance',      icon:'bi-tools',            color:'#546e7a'},
-  {id:'subscriptions', label:'Subscriptions',         icon:'bi-play-circle-fill', color:'#00bcd4'},
-  {id:'travel',        label:'Travel / Holidays',     icon:'bi-airplane-fill',    color:'#03a9f4'},
-  {id:'gifts',         label:'Gifts / Donations',     icon:'bi-gift-fill',        color:'#ff9800'},
-  {id:'professional',  label:'Professional Services', icon:'bi-person-badge-fill',color:'#3f51b5'},
-  {id:'family_contrib',label:'Family Account Transfer',icon:'bi-people-fill',    color:'#9c27b0'},
-  {id:'tax_payment',   label:'Tax Payment (F24)',     icon:'bi-receipt',          color:'#c0392b'},
-  {id:'inps_payment',  label:'INPS Payment',          icon:'bi-building-fill',    color:'#d32f2f'},
-  {id:'other_exp',     label:'Other Expenses',        icon:'bi-three-dots',       color:'#78909c'},
-];
-const ALL_CATS = [...INCOME_CATS, ...EXPENSE_CATS];
+// ===================== CATEGORIES (dynamic from DB) =====================
+function INCOME_CATS() { return DB.categories.filter(c=>c.type==='income'); }
+function EXPENSE_CATS() { return DB.categories.filter(c=>c.type==='expense'); }
+function ALL_CATS() { return DB.categories; }
 
-function catById(id) { return ALL_CATS.find(c => c.id === id) || {label: id, icon:'bi-tag', color:'#999'}; }
+function catById(id) {
+  return DB.categories.find(c=>c.id===id) || {label:id, icon:'bi-tag', color:'#999', type:'expense'};
+}
 
 // ===================== MONTH NAVIGATION =====================
 let currentMonth = new Date().toISOString().slice(0,7);
@@ -559,7 +655,7 @@ function updateMonthNav() {
 const PAGE_TITLES = {
   dashboard:'Dashboard', transactions:'Daily Entry', budget:'Budget Setup',
   variances:'Variances', cashflow:'Cash Flow Forecast', tax:'Tax Accruals',
-  savings:'Savings & Wealth', assets:'Assets & Patrimony', settings:'Settings'
+  savings:'Savings & Wealth', assets:'Assets & Patrimony', categories:'Categorie', settings:'Settings'
 };
 let currentPage = 'dashboard';
 
@@ -586,6 +682,7 @@ function renderPage(page) {
     case 'tax':         renderTax(); break;
     case 'savings':     renderSavings(); break;
     case 'assets':      renderAssets(); break;
+    case 'categories':  renderCategories(); break;
     case 'settings':    renderSettings(); break;
   }
 }
@@ -610,8 +707,8 @@ function monthExpenses(ym) {
   return monthTx(ym).filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
 }
 function budgetFor(ym) { return DB.budgets[ym] || {}; }
-function totalBudgetInc(ym) { return INCOME_CATS.reduce((s,c)=>s+(budgetFor(ym)[c.id]||0),0); }
-function totalBudgetExp(ym) { return EXPENSE_CATS.reduce((s,c)=>s+(budgetFor(ym)[c.id]||0),0); }
+function totalBudgetInc(ym) { return INCOME_CATS().reduce((s,c)=>s+(budgetFor(ym)[c.id]||0),0); }
+function totalBudgetExp(ym) { return EXPENSE_CATS().reduce((s,c)=>s+(budgetFor(ym)[c.id]||0),0); }
 function progClass(pct) { return pct<80?'prog-ok':pct<100?'prog-warn':'prog-err'; }
 
 function varClass(type, variance) {
@@ -657,15 +754,15 @@ function renderDashboard() {
     // Bar chart
     const ctx1 = document.getElementById('chart-avb').getContext('2d');
     if (chartAvb) chartAvb.destroy();
-    const incCats = INCOME_CATS.map(c=>({label:c.label,budget:budgetFor(ym)[c.id]||0,actual:txs.filter(t=>t.type==='income'&&t.category===c.id).reduce((s,t)=>s+t.amount,0)})).filter(c=>c.budget||c.actual);
-    const expCats = EXPENSE_CATS.map(c=>({label:c.label,budget:budgetFor(ym)[c.id]||0,actual:txs.filter(t=>t.type==='expense'&&t.category===c.id).reduce((s,t)=>s+t.amount,0)})).filter(c=>c.budget||c.actual);
+    const incCats = INCOME_CATS().map(c=>({label:c.label,budget:budgetFor(ym)[c.id]||0,actual:txs.filter(t=>t.type==='income'&&t.category===c.id).reduce((s,t)=>s+t.amount,0)})).filter(c=>c.budget||c.actual);
+    const expCats = EXPENSE_CATS().map(c=>({label:c.label,budget:budgetFor(ym)[c.id]||0,actual:txs.filter(t=>t.type==='expense'&&t.category===c.id).reduce((s,t)=>s+t.amount,0)})).filter(c=>c.budget||c.actual);
     const all = [...incCats,...expCats].slice(0,8);
     chartAvb = new Chart(ctx1,{type:'bar',data:{labels:all.map(c=>c.label.length>14?c.label.slice(0,14)+'…':c.label),datasets:[{label:'Budget',data:all.map(c=>c.budget),backgroundColor:'rgba(200,150,60,.25)',borderColor:'rgba(200,150,60,.7)',borderWidth:1.5},{label:'Actual',data:all.map(c=>c.actual),backgroundColor:'rgba(49,116,212,.35)',borderColor:'rgba(49,116,212,.7)',borderWidth:1.5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11},boxWidth:12}}},scales:{x:{ticks:{font:{size:9}}},y:{ticks:{callback:v=>'€'+v.toLocaleString('it-IT')}}}}});
 
     // Pie chart
     const ctx2 = document.getElementById('chart-pie').getContext('2d');
     if (chartPie) chartPie.destroy();
-    const expData = EXPENSE_CATS.map(c=>({label:c.label,color:c.color,v:txs.filter(t=>t.type==='expense'&&t.category===c.id).reduce((s,t)=>s+t.amount,0)})).filter(c=>c.v>0);
+    const expData = EXPENSE_CATS().map(c=>({label:c.label,color:c.color,v:txs.filter(t=>t.type==='expense'&&t.category===c.id).reduce((s,t)=>s+t.amount,0)})).filter(c=>c.v>0);
     if (expData.length) {
       chartPie = new Chart(ctx2,{type:'doughnut',data:{labels:expData.map(c=>c.label),datasets:[{data:expData.map(c=>c.v),backgroundColor:expData.map(c=>c.color+'cc'),borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:10},boxWidth:10}}}}});
     } else {
@@ -674,15 +771,15 @@ function renderDashboard() {
   },50);
 
   // Summary table
-  const rows = ALL_CATS.map(c=>{
+  const rows = ALL_CATS().map(c=>{
     const act = txs.filter(t=>t.category===c.id).reduce((s,t)=>s+t.amount,0);
     const bud = budgetFor(ym)[c.id]||0;
-    const type = INCOME_CATS.find(ic=>ic.id===c.id)?'income':'expense';
+    const type = c.type || (INCOME_CATS().find(ic=>ic.id===c.id)?'income':'expense');
     const var_ = type==='income' ? act-bud : bud-act;
     if (!act && !bud) return '';
     const varCls = var_>=0?'am-p':'am-n';
     return `<tr>
-      <td><span class="cat-chip"><i class="bi ${c.icon}" style="color:${c.color}"></i> ${c.label}</span></td>
+      <td><span class="cat-chip">${renderIcon(c.icon, c.color)} ${c.label}</span></td>
       <td><span class="tag-${type}">${type}</span></td>
       <td class="r am-0">${bud?fmt(bud):'—'}</td>
       <td class="r am-0">${act?fmt(act):'—'}</td>
@@ -724,7 +821,7 @@ function renderTransactions() {
       return `<tr>
         <td style="font-family:'IBM Plex Mono',monospace;font-size:12px">${t.date}</td>
         <td>${t.description||'—'}</td>
-        <td><span class="cat-chip"><i class="bi ${c.icon}" style="color:${c.color}"></i> ${c.label}</span></td>
+        <td><span class="cat-chip">${renderIcon(c.icon, c.color)} ${c.label}</span></td>
         <td style="color:var(--text-3);font-size:12px">${t.source||'—'}</td>
         <td class="r"><span class="${cls}">${pref}${fmt(t.amount,2)}</span></td>
         <td style="color:var(--text-3);font-size:12px">${t.method||'—'}</td>
@@ -749,7 +846,7 @@ function closeTxModal() { document.getElementById('txModal').classList.remove('o
 function setTxType(type, el) {
   document.querySelectorAll('#txModal .tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
-  const cats = type==='income'?INCOME_CATS:EXPENSE_CATS;
+  const cats = type==='income'?INCOME_CATS():EXPENSE_CATS();
   document.getElementById('txCategory').innerHTML = cats.map(c=>`<option value="${c.id}">${c.label}</option>`).join('');
   document.getElementById('txModal').dataset.type = type;
 }
@@ -812,7 +909,7 @@ function renderBudget() { renderBudgetPanel(); }
 function renderBudgetPanel() {
   const ym = currentMonth;
   const bud = budgetFor(ym);
-  const cats = budgetTabActive==='income'?INCOME_CATS:EXPENSE_CATS;
+  const cats = budgetTabActive==='income'?INCOME_CATS():EXPENSE_CATS();
   const txs = monthTx(ym);
   let total = 0;
   const rows = cats.map(c=>{
@@ -822,7 +919,7 @@ function renderBudgetPanel() {
     const pctV = val&&act ? pct(act,parseFloat(val)) : 0;
     const pClass = pctV>100?'prog-err':pctV>80?'prog-warn':'prog-ok';
     return `<tr>
-      <td><span class="cat-chip"><i class="bi ${c.icon}" style="color:${c.color}"></i> ${c.label}</span></td>
+      <td><span class="cat-chip">${renderIcon(c.icon, c.color)} ${c.label}</span></td>
       <td style="width:180px">
         <input type="number" class="fi mono" style="padding:7px 10px" value="${val}" placeholder="0" step="50"
           onchange="setBudget('${c.id}',this.value)" oninput="setBudget('${c.id}',this.value)">
@@ -882,17 +979,17 @@ function renderVariances() {
   const txs = monthTx(ym);
   const bud = budgetFor(ym);
 
-  const rows = ALL_CATS.map(c=>{
+  const rows = ALL_CATS().map(c=>{
     const act = txs.filter(t=>t.category===c.id).reduce((s,t)=>s+t.amount,0);
     const b = bud[c.id]||0;
-    const type = INCOME_CATS.find(ic=>ic.id===c.id)?'income':'expense';
+    const type = c.type || (INCOME_CATS().find(ic=>ic.id===c.id)?'income':'expense');
     const varAmt = type==='income' ? act-b : b-act;
     const varPct = b ? (varAmt/b*100).toFixed(1) : null;
     if (!act && !b) return null;
     const vCls = varAmt>=0?'am-p':'am-n';
     const bgStyle = varAmt<0?'background:rgba(212,59,59,.03)':'';
     return {type, el:`<tr style="${bgStyle}">
-      <td><span class="cat-chip"><i class="bi ${c.icon}" style="color:${c.color}"></i> ${c.label}</span></td>
+      <td><span class="cat-chip">${renderIcon(c.icon, c.color)} ${c.label}</span></td>
       <td><span class="tag-${type}">${type}</span></td>
       <td class="r am-0">${b?fmt(b):'—'}</td>
       <td class="r am-0">${act?fmt(act):'—'}</td>
@@ -1479,6 +1576,217 @@ function importData(e) {
 function resetData() {
   if (!confirm('Are you sure? ALL data will be deleted permanently.')) return;
   DB = defaultDB(); save(); updateUI();
+}
+
+// ===================== ICON RENDER HELPER =====================
+function renderIcon(icon, color, size='16px') {
+  if (!icon) return `<i class="bi bi-tag" style="color:${color||'#999'};font-size:${size}"></i>`;
+  // Emoji: single char or multi-char emoji (not bi- prefix)
+  if (!icon.startsWith('bi-')) {
+    return `<span style="font-size:${size};line-height:1">${icon}</span>`;
+  }
+  return `<i class="bi ${icon}" style="color:${color||'#999'};font-size:${size}"></i>`;
+}
+
+// ===================== CATEGORIES MANAGEMENT =====================
+let catTabActive = 'income';
+
+function catTab(type, el) {
+  catTabActive = type;
+  document.querySelectorAll('#page-categories .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  renderCatPanel();
+}
+
+function renderCatPanel() {
+  const cats = catTabActive === 'income' ? INCOME_CATS() : EXPENSE_CATS();
+  const el = document.getElementById('cat-panel');
+  if (!cats.length) {
+    el.innerHTML = '<div class="empty"><i class="bi bi-tags"></i><p>Nessuna categoria. Aggiungine una.</p></div>';
+    return;
+  }
+  el.innerHTML = `<div class="card">
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Icona</th><th>Nome</th><th>Colore</th><th class="r">Transazioni</th><th></th></tr></thead>
+        <tbody>${cats.map(c => {
+          const txCount = DB.transactions.filter(t=>t.category===c.id).length;
+          return `<tr>
+            <td style="font-size:20px;width:40px;text-align:center">${renderIcon(c.icon, c.color, '20px')}</td>
+            <td><strong>${c.label}</strong></td>
+            <td><span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:50%;background:${c.color};display:inline-block"></span>${c.color}</span></td>
+            <td class="r"><span class="badge b-neu">${txCount}</span></td>
+            <td style="text-align:right"><button class="btn btn-s sm" onclick="openCatModal('${c.id}')"><i class="bi bi-pencil"></i></button></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function renderCategories() { renderCatPanel(); }
+
+function openCatModal(id) {
+  document.getElementById('catModal').classList.add('open');
+  document.getElementById('catEditId').value = '';
+  document.getElementById('catDelBtn').style.display = 'none';
+  if (id) {
+    const c = DB.categories.find(x=>x.id===id);
+    if (!c) return;
+    document.getElementById('catEditId').value = c.id;
+    document.getElementById('catLabel').value = c.label;
+    document.getElementById('catIcon').value = c.icon || '';
+    document.getElementById('catColor').value = c.color || '#C8963C';
+    document.getElementById('catModalTitle').textContent = 'Modifica Categoria';
+    document.getElementById('catDelBtn').style.display = 'flex';
+    const txCount = DB.transactions.filter(t=>t.category===id).length;
+    if (txCount > 0) {
+      document.getElementById('catDelBtn').title = `${txCount} transazioni collegate`;
+    }
+    // Set type tabs
+    const incBtn = document.getElementById('catTypeInc');
+    const expBtn = document.getElementById('catTypeExp');
+    if (c.type === 'income') { incBtn.classList.add('active'); expBtn.classList.remove('active'); }
+    else { expBtn.classList.add('active'); incBtn.classList.remove('active'); }
+    previewCatIcon();
+  } else {
+    document.getElementById('catLabel').value = '';
+    document.getElementById('catIcon').value = '📦';
+    document.getElementById('catColor').value = '#C8963C';
+    document.getElementById('catModalTitle').textContent = 'Nuova Categoria';
+    document.getElementById('catIconPreview').innerHTML = '📦';
+    document.getElementById('catTypeInc').classList.add('active');
+    document.getElementById('catTypeExp').classList.remove('active');
+  }
+}
+
+function closeCatModal() { document.getElementById('catModal').classList.remove('open'); }
+
+function setCatType(type, el) {
+  document.getElementById('catTypeInc').classList.remove('active');
+  document.getElementById('catTypeExp').classList.remove('active');
+  el.classList.add('active');
+  document.getElementById('catModal').dataset.catType = type;
+}
+
+function previewCatIcon() {
+  const icon = document.getElementById('catIcon').value.trim();
+  const preview = document.getElementById('catIconPreview');
+  if (!icon) { preview.innerHTML = '?'; return; }
+  preview.innerHTML = renderIcon(icon, document.getElementById('catColor').value, '22px');
+}
+
+function saveCat() {
+  const label = document.getElementById('catLabel').value.trim();
+  if (!label) { alert('Inserisci un nome categoria'); return; }
+  const icon = document.getElementById('catIcon').value.trim() || '📦';
+  const color = document.getElementById('catColor').value;
+  const type = document.getElementById('catTypeInc').classList.contains('active') ? 'income' : 'expense';
+  const editId = document.getElementById('catEditId').value;
+  if (editId) {
+    const c = DB.categories.find(x=>x.id===editId);
+    if (c) Object.assign(c, {label, icon, color, type});
+  } else {
+    DB.categories.push({ id: uid(), label, icon, color, type });
+  }
+  save(); closeCatModal(); renderCatPanel();
+}
+
+function deleteCat() {
+  const id = document.getElementById('catEditId').value;
+  const txCount = DB.transactions.filter(t=>t.category===id).length;
+  const msg = txCount > 0
+    ? `Questa categoria ha ${txCount} transazioni collegate. Eliminarla comunque? Le transazioni rimarranno ma senza categoria.`
+    : 'Eliminare questa categoria?';
+  if (!confirm(msg)) return;
+  DB.categories = DB.categories.filter(c=>c.id!==id);
+  save(); closeCatModal(); renderCatPanel();
+}
+
+// ===================== ICON PICKER =====================
+const EMOJI_LIBRARY = {
+  'Finanza': ['💰','💵','💶','💷','💴','💸','🏦','🪙','💳','📈','📉','📊','🧾','🏧','💹','🤑','🏧','💎','🏷️','🧮'],
+  'Casa': ['🏠','🏡','🏘️','🛋️','🛏️','🚿','🛁','🪴','🪞','🪟','🚪','🏗️','🔑','🪑','🛗','🧹','🧺','🧼','🪣','🧻'],
+  'Cibo': ['🍳','🥘','🍽️','🥗','🛒','🧃','🍷','🍸','☕','🧋','🎂','🍕','🍔','🥩','🥦','🧀','🥚','🫙','🍞','🥐'],
+  'Trasporti': ['🚗','✈️','🚂','🚌','🛵','🚲','⛽','🛞','🚕','🛺','🚁','⛵','🛥️','🏍️','🚎','🚐','🛻','🏎️','🚀','🛸'],
+  'Salute': ['❤️','💊','🏥','🩺','🧬','🩻','💪','🧘','🏃','🌡️','🩹','🧪','👨‍⚕️','🦷','👁️','🧠','🫁','🫀','💉','🩸'],
+  'Lavoro': ['💼','📋','📁','💻','🖥️','⌨️','📞','📠','✏️','📝','📌','🔒','🔓','⚙️','🔨','🔧','🪛','📐','📏','🗂️'],
+  'Shopping': ['🛍️','👗','👠','👔','👒','👜','💍','🎁','🧸','📱','⌚','📷','🎮','🎵','📚','🖼️','🪆','🧩','⚽','🎾'],
+  'Natura': ['🌳','🌿','🌸','🌻','🍀','🌊','🏔️','🌅','🌙','⭐','☀️','🌈','🍃','🌾','🌺','🦋','🐝','🌱','🍄','🌴'],
+  'Persone': ['👨‍👩‍👧','👶','🧒','👦','👧','🧑','👨','👩','🧓','👴','👵','👮','👷','💂','🧑‍💼','👩‍🏫','👨‍🍳','👩‍🎨','🧑‍🔧','👨‍💻'],
+  'Varie': ['⭐','🎯','🎪','🎨','🎭','🎬','📺','📻','🎸','🎹','🎺','🎻','🥁','🎤','🎧','⚡','🔥','💡','🌐','🗺️'],
+};
+
+const BI_ICONS = [
+  'bi-house-fill','bi-house','bi-building','bi-bank','bi-bank2','bi-briefcase-fill','bi-briefcase',
+  'bi-cart-fill','bi-cart','bi-bag-fill','bi-bag','bi-credit-card-fill','bi-credit-card',
+  'bi-cash-stack','bi-currency-euro','bi-graph-up-arrow','bi-graph-down-arrow','bi-bar-chart-fill',
+  'bi-piggy-bank-fill','bi-wallet-fill','bi-wallet','bi-receipt','bi-receipt-cutoff',
+  'bi-car-front-fill','bi-airplane-fill','bi-train-front-fill','bi-bicycle','bi-scooter',
+  'bi-heart-fill','bi-heart','bi-activity','bi-shield-fill-check','bi-shield-fill',
+  'bi-phone-fill','bi-laptop-fill','bi-tv-fill','bi-wifi','bi-router-fill',
+  'bi-people-fill','bi-person-fill','bi-person-badge-fill','bi-gender-ambiguous',
+  'bi-lightning-fill','bi-droplet-fill','bi-fire','bi-thermometer-half','bi-water',
+  'bi-star-fill','bi-bookmark-fill','bi-flag-fill','bi-gift-fill','bi-trophy-fill',
+  'bi-tools','bi-wrench-adjustable-fill','bi-hammer','bi-screwdriver','bi-gear-fill',
+  'bi-music-note-beamed','bi-camera-fill','bi-film','bi-controller','bi-book-fill',
+  'bi-sun-fill','bi-moon-fill','bi-cloud-fill','bi-tree-fill','bi-flower1',
+  'bi-cup-hot-fill','bi-cup-straw','bi-egg-fried','bi-basket-fill','bi-shop',
+  'bi-mortarboard-fill','bi-pencil-fill','bi-pen-fill','bi-journal-fill','bi-newspaper',
+  'bi-building-fill','bi-buildings-fill','bi-hospital-fill','bi-capsule-pill','bi-bandaid-fill',
+  'bi-plus-circle-fill','bi-dash-circle-fill','bi-x-circle-fill','bi-check-circle-fill',
+  'bi-arrow-up-right-circle-fill','bi-arrow-down-left-circle-fill','bi-three-dots',
+];
+
+let iconPickerMode = 'emoji';
+let iconPickerTarget = null;
+
+function openIconPicker() {
+  iconPickerTarget = 'catIcon';
+  iconPickerMode = 'emoji';
+  document.getElementById('iconSearch').value = '';
+  document.getElementById('iconPickerModal').classList.add('open');
+  renderIconGrid();
+}
+
+function closeIconPicker() {
+  document.getElementById('iconPickerModal').classList.remove('open');
+}
+
+function iconSection(mode, el) {
+  iconPickerMode = mode;
+  document.querySelectorAll('#iconTabs .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('iconSearch').value = '';
+  renderIconGrid();
+}
+
+function filterIcons() { renderIconGrid(); }
+
+function renderIconGrid() {
+  const q = document.getElementById('iconSearch').value.toLowerCase();
+  const grid = document.getElementById('iconGrid');
+  if (iconPickerMode === 'emoji') {
+    let html = '';
+    Object.entries(EMOJI_LIBRARY).forEach(([section, emojis]) => {
+      const filtered = emojis.filter(e => !q || e.includes(q) || section.toLowerCase().includes(q));
+      if (!filtered.length) return;
+      html += `<div style="grid-column:1/-1;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text-3);padding:8px 0 2px">${section}</div>`;
+      html += filtered.map(e => `<button onclick="pickIcon('${e}')" style="font-size:22px;height:40px;width:100%;border:1.5px solid transparent;background:none;cursor:pointer;border-radius:7px;transition:all .1s;display:flex;align-items:center;justify-content:center" onmouseover="this.style.background='var(--gold-p)';this.style.borderColor='var(--gold)'" onmouseout="this.style.background='none';this.style.borderColor='transparent'">${e}</button>`).join('');
+    });
+    grid.innerHTML = html || '<div style="grid-column:1/-1;text-align:center;color:var(--text-3);padding:20px">Nessun risultato</div>';
+  } else {
+    const filtered = BI_ICONS.filter(i => !q || i.includes(q));
+    grid.innerHTML = filtered.map(i => `<button onclick="pickIcon('${i}')" title="${i}" style="font-size:18px;height:40px;width:100%;border:1.5px solid transparent;background:none;cursor:pointer;border-radius:7px;transition:all .1s;display:flex;align-items:center;justify-content:center;color:var(--text-2)" onmouseover="this.style.background='var(--gold-p)';this.style.borderColor='var(--gold)';this.style.color='var(--text)'" onmouseout="this.style.background='none';this.style.borderColor='transparent';this.style.color='var(--text-2)'"><i class="bi ${i}"></i></button>`).join('') || '<div style="grid-column:1/-1;text-align:center;color:var(--text-3);padding:20px">Nessun risultato</div>';
+  }
+}
+
+function pickIcon(icon) {
+  if (iconPickerTarget) {
+    document.getElementById(iconPickerTarget).value = icon;
+    previewCatIcon();
+  }
+  closeIconPicker();
 }
 
 // ===================== MOBILE SIDEBAR =====================
